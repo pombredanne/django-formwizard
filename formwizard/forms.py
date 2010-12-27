@@ -485,7 +485,7 @@ class SessionFormWizard(FormWizard):
     """
     @classonlymethod
     def as_view(cls, *args, **kwargs):
-        return FormWizard.as_view(
+        return super(SessionFormWizard, cls).as_view(
             'formwizard.storage.session.SessionStorage', *args, **kwargs)
 
 class CookieFormWizard(FormWizard):
@@ -494,7 +494,7 @@ class CookieFormWizard(FormWizard):
     """
     @classonlymethod
     def as_view(cls, *args, **kwargs):
-        return FormWizard.as_view(
+        return super(CookieFormWizard, cls).as_view(
             'formwizard.storage.cookie.CookieStorage', *args, **kwargs)
 
 class NamedUrlFormWizard(FormWizard):
@@ -651,7 +651,7 @@ class NamedUrlSessionFormWizard(NamedUrlFormWizard):
     """
     @classonlymethod
     def as_view(cls, *args, **kwargs):
-        return NamedUrlFormWizard.as_view(
+        return super(NamedUrlFormWizard, cls).as_view(
             'formwizard.storage.session.SessionStorage', *args, **kwargs)
 
 class NamedUrlCookieFormWizard(NamedUrlFormWizard):
@@ -660,6 +660,6 @@ class NamedUrlCookieFormWizard(NamedUrlFormWizard):
     """
     @classonlymethod
     def as_view(cls, *args, **kwargs):
-        return NamedUrlFormWizard.as_view(
+        return super(NamedUrlFormWizard, cls).as_view(
             'formwizard.storage.cookie.CookieStorage', *args, **kwargs)
 
