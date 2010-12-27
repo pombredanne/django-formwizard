@@ -6,11 +6,11 @@ from django.core.urlresolvers import reverse
 from formwizard.storage import get_storage
 from formwizard.storage.base import NoFileStorageException
 
-from class_based_views.base import View
+from django.views.generic import View
+from django.utils.decorators import classonlymethod
 
 from django import forms
 from django.forms import formsets
-import copy
 
 class FormWizard(View):
     """
@@ -18,11 +18,23 @@ class FormWizard(View):
     an instance.
     """
 
-    def __init__(self, storage, form_list, initial_list={}, instance_list={},
-        condition_list={}):
+    storage_name = None
+    form_list = None
+    initial_list = None
+    instance_list = None
+    condition_list = None
+
+    @classonlymethod
+    def as_view(cls, *args, **kwargs):
+        return super(FormWizard, cls).as_view(**cls.build_init_kwargs(*args, **kwargs))
+
+    @classmethod
+    def build_init_kwargs(cls, storage, form_list, initial_list={},
+        instance_list={}, condition_list={}):
         """
-        Creates a form wizard instance. `storage` is the storage backend, the
-        place where step data and current state of the form gets saved.
+        Creates a dict with all needed parameters for the form wizard instances.
+        `storage` is the storage backend, the place where step data and
+        current state of the form gets saved.
 
         `form_list` is a list of forms. The list entries can be form classes
         of tuples of (`step_name`, `form_class`).
@@ -34,31 +46,34 @@ class FormWizard(View):
         is only used when `ModelForms` are used. The key should be equal to
         the `step_name` in the `form_list`.
         """
-        self.form_list = SortedDict()
-        self.storage_name = storage
+
+        kwargs = {}
+        init_form_list = SortedDict()
+        kwargs['storage_name'] = storage
 
         assert len(form_list) > 0, 'at least one form is needed'
 
         for i in range(len(form_list)):
             form = form_list[i]
             if isinstance(form, tuple):
-                self.form_list[unicode(form[0])] = form[1]
+                init_form_list[unicode(form[0])] = form[1]
             else:
-                self.form_list[unicode(i)] = form
+                init_form_list[unicode(i)] = form
 
-        for form in self.form_list.values():
+        for form in init_form_list.values():
             if issubclass(form, formsets.BaseFormSet):
                 form = form.form
             if [True for f in form.base_fields.values()
                 if issubclass(f.__class__, forms.FileField)] and \
-                not hasattr(self, 'file_storage'):
+                not hasattr(cls, 'file_storage'):
                 raise NoFileStorageException
 
-        self.initial_list = initial_list
-        self.instance_list = instance_list
-        self.condition_list = condition_list
+        kwargs['form_list'] = init_form_list
+        kwargs['initial_list'] = initial_list
+        kwargs['instance_list'] = instance_list
+        kwargs['condition_list'] = condition_list
 
-        super(FormWizard, self).__init__()
+        return kwargs
 
     def get_form_list(self, request, storage):
         form_list = SortedDict()
@@ -74,7 +89,7 @@ class FormWizard(View):
         return '%s: form_list: %s, initial_list: %s' % (
             self.get_wizard_name(), self.form_list, self.initial_list)
 
-    def __call__(self, request, *args, **kwargs):
+    def dispatch(self, request, *args, **kwargs):
         """
         This method gets called by the routing engine. The first argument is
         `request` which contains a `HttpRequest` instance. The request is
@@ -86,15 +101,15 @@ class FormWizard(View):
 
         storage = get_storage(self.storage_name,
             self.get_wizard_name(), request, getattr(self, 'file_storage', None))
-        response = super(FormWizard, self).__call__(request, storage, *args, **kwargs)
+        response = super(FormWizard, self).dispatch(request, storage, *args, **kwargs)
         storage.update_response(response)
 
         if kwargs.get('testmode', False):
-            return response, storage
+            return response, self, storage
         else:
             return response
 
-    def GET(self, request, storage, *args, **kwargs):
+    def get(self, request, storage, *args, **kwargs):
         """
         If the wizard gets a GET request, it assumes that the user just
         starts at the first step or wants to restart the process. The wizard
@@ -109,7 +124,7 @@ class FormWizard(View):
         storage.set_current_step(self.get_first_step(request, storage))
         return self.render(request, storage, self.get_form(request, storage))
 
-    def POST(self, request, storage, *args, **kwargs):
+    def post(self, request, storage, *args, **kwargs):
         """
         Generates a HttpResponse which contains either the current step (if
         form validation wasn't successful), the next step (if the current step
@@ -124,7 +139,7 @@ class FormWizard(View):
             self.get_form_list(request, storage).has_key(
             request.POST['form_prev_step']):
             storage.set_current_step(request.POST['form_prev_step'])
-            form = self.get_form(request, storage, 
+            form = self.get_form(request, storage,
                 data=storage.get_step_data(
                     self.determine_step(request, storage)),
                 files=storage.get_step_files(
@@ -196,7 +211,7 @@ class FormWizard(View):
 
     def get_form_initial(self, request, storage, step):
         """
-        Returns a dictionary which will be passed to the form for `step` 
+        Returns a dictionary which will be passed to the form for `step`
         as `initial`. If no initial data was provied while initializing the
         form wizard, a empty dictionary will be returned.
         """
@@ -204,7 +219,7 @@ class FormWizard(View):
 
     def get_form_instance(self, request, storage, step):
         """
-        Returns a object which will be passed to the form for `step` 
+        Returns a object which will be passed to the form for `step`
         as `instance`. If no instance object was provied while initializing
         the form wizard, None be returned.
         """
@@ -339,8 +354,8 @@ class FormWizard(View):
     def get_prev_step(self, request, storage, step=None):
         """
         Returns the previous step before the given `step`. If there are no
-        steps available, None will be returned. If the `step` argument is None, the
-        current step will be determined automatically.
+        steps available, None will be returned. If the `step` argument is
+        None, the current step will be determined automatically.
         """
         form_list = self.get_form_list(request, storage)
 
@@ -468,44 +483,58 @@ class SessionFormWizard(FormWizard):
     """
     A FormWizard with pre-configured SessionStorageBackend.
     """
-    def __init__(self, *args, **kwargs):
-        super(SessionFormWizard, self).__init__(
+    @classonlymethod
+    def as_view(cls, *args, **kwargs):
+        return FormWizard.as_view(
             'formwizard.storage.session.SessionStorage', *args, **kwargs)
 
 class CookieFormWizard(FormWizard):
     """
     A FormWizard with pre-configured CookieStorageBackend.
     """
-    def __init__(self, *args, **kwargs):
-        super(CookieFormWizard, self).__init__(
+    @classonlymethod
+    def as_view(cls, *args, **kwargs):
+        return FormWizard.as_view(
             'formwizard.storage.cookie.CookieStorage', *args, **kwargs)
 
 class NamedUrlFormWizard(FormWizard):
     """
     A FormWizard with url-named steps support.
     """
-    done_step_name = 'done'
 
-    def __init__(self, *args, **kwargs):
+    url_name = None
+    done_step_name = None
+
+    @classmethod
+    def build_init_kwargs(cls, *args, **kwargs):
         """
         We require a url_name to reverse urls later. Additionally users can
         pass a done_step_name to change the url-name of the "done" view.
         """
+        extra_kwargs = {
+            'done_step_name': 'done'
+        }
+
         assert kwargs.has_key('url_name'), \
             'url name is needed to resolve correct wizard urls'
-        self.url_name = kwargs['url_name']
+        extra_kwargs['url_name'] = kwargs['url_name']
         del kwargs['url_name']
 
         if kwargs.has_key('done_step_name'):
-            self.done_step_name = kwargs['done_step_name']
+            extra_kwargs['done_step_name'] = kwargs['done_step_name']
             del kwargs['done_step_name']
 
-        super(NamedUrlFormWizard, self).__init__(*args, **kwargs)
+        initkwargs = super(NamedUrlFormWizard, cls).build_init_kwargs(
+            *args, **kwargs)
 
-        assert not self.form_list.has_key(self.done_step_name), \
-            'step name "%s" is reserved for "done" view' % self.done_step_name
+        initkwargs.update(extra_kwargs)
 
-    def GET(self, request, storage, *args, **kwargs):
+        assert not initkwargs['form_list'].has_key(initkwargs['done_step_name']), \
+            'step name "%s" is reserved for "done" view' % initkwargs['done_step_name']
+
+        return initkwargs
+
+    def get(self, request, storage, *args, **kwargs):
         """
         This renders the form or, if needed, does the http redirects.
         """
@@ -563,20 +592,21 @@ class NamedUrlFormWizard(FormWizard):
                         files=storage.get_current_step_files()
                     ), **kwargs)
 
-    def POST(self, request, storage, *args, **kwargs):
+    def post(self, request, storage, *args, **kwargs):
         """
         Do a redirect if user presses the prev. step button. The rest of this
         is super'd from FormWizard.
         """
         if request.POST.has_key('form_prev_step') and \
-            self.get_form_list(request, storage).has_key(request.POST['form_prev_step']):
+            self.get_form_list(request, storage).has_key(
+                request.POST['form_prev_step']):
 
             storage.set_current_step(request.POST['form_prev_step'])
             return HttpResponseRedirect(reverse(self.url_name, kwargs={
                 'step': storage.get_current_step()
             }))
         else:
-            return super(NamedUrlFormWizard, self).POST(
+            return super(NamedUrlFormWizard, self).post(
                 request, storage, *args, **kwargs)
 
     def render_next_step(self, request, storage, form, **kwargs):
@@ -589,7 +619,8 @@ class NamedUrlFormWizard(FormWizard):
         return HttpResponseRedirect(
             reverse(self.url_name, kwargs={'step': next_step}))
 
-    def render_revalidation_failure(self, request, storage, failed_step, form, **kwargs):
+    def render_revalidation_failure(self, request, storage, failed_step,
+        form, **kwargs):
         """
         When a step fails, we have to redirect the user to the first failing
         step.
@@ -618,14 +649,17 @@ class NamedUrlSessionFormWizard(NamedUrlFormWizard):
     """
     A NamedUrlFormWizard with pre-configured SessionStorageBackend.
     """
-    def __init__(self, *args, **kwargs):
-        super(NamedUrlSessionFormWizard, self).__init__(
+    @classonlymethod
+    def as_view(cls, *args, **kwargs):
+        return NamedUrlFormWizard.as_view(
             'formwizard.storage.session.SessionStorage', *args, **kwargs)
 
 class NamedUrlCookieFormWizard(NamedUrlFormWizard):
     """
     A NamedUrlFormWizard with pre-configured CookieStorageBackend.
     """
-    def __init__(self, *args, **kwargs):
-        super(NamedUrlCookieFormWizard, self).__init__(
+    @classonlymethod
+    def as_view(cls, *args, **kwargs):
+        return NamedUrlFormWizard.as_view(
             'formwizard.storage.cookie.CookieStorage', *args, **kwargs)
+
