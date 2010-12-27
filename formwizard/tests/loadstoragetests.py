@@ -10,9 +10,9 @@ class TestLoadStorage(TestCase):
             BaseStorage)
 
     def test_missing_module(self):
-        self.assertRaises(MissingStorageModuleException, get_storage, 
+        self.assertRaises(MissingStorageModuleException, get_storage,
             'formwizard.storage.idontexist.IDontExistStorage', 'wizard1')
 
     def test_missing_class(self):
-        self.assertRaises(MissingStorageClassException, get_storage, 
+        self.assertRaises(MissingStorageClassException, get_storage,
             'formwizard.storage.base.IDontExistStorage', 'wizard1')

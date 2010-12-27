@@ -1,14 +1,12 @@
 from formwizard.storage.base import BaseStorage, NoFileStorageException
 from django.core.files.uploadedfile import UploadedFile
-from django.core.files import File
-import os
 
 class SessionStorage(BaseStorage):
     step_session_key = 'step'
     step_data_session_key = 'step_data'
     step_files_session_key = 'step_files'
     extra_context_session_key = 'extra_context'
-    
+
     def __init__(self, prefix, request, file_storage=None, *args, **kwargs):
         super(SessionStorage, self).__init__(prefix)
         self.request = request

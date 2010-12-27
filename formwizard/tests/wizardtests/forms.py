@@ -29,7 +29,11 @@ class ContactWizard(FormWizard):
     file_storage = temp_storage
 
     def done(self, request, storage, form_list, **kwargs):
-        c = Context({'form_list': [x.cleaned_data for x in form_list], 'all_cleaned_data': self.get_all_cleaned_data(request, storage)})
+        c = Context({
+            'form_list': [x.cleaned_data for x in form_list],
+            'all_cleaned_data': self.get_all_cleaned_data(request, storage)
+        })
+
         for form in self.form_list.keys():
             c[form] = self.get_cleaned_data_for_step(request, storage, form)
 
@@ -41,3 +45,4 @@ class ContactWizard(FormWizard):
         if storage.get_current_step() == 'form2':
             context.update({'another_var': True})
         return context
+
