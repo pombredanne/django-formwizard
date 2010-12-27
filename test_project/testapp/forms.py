@@ -26,7 +26,8 @@ class FeedbackWizard(SessionFormWizard):
         )
 
     def get_template(self, request, storage):
+        print 'called'
         return ['testapp/form.html',]
 
-feedback_form_instance = FeedbackWizard([FeedbackStep1, FeedbackStep2, \
+feedback_form_instance = FeedbackWizard.as_view([FeedbackStep1, FeedbackStep2, \
     FeedbackStep3])

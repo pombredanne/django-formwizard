@@ -29,7 +29,7 @@ class FeedbackWizard(SessionFormWizard):
     def get_template(self, request, storage):
         return ['testapp/form.html',]
 
-feedback_form_instance = FeedbackWizard(
+feedback_form_instance = FeedbackWizard.as_view(
     [FeedbackStep1, FeedbackStep2, FeedbackStep3],
     condition_list={
         '2': lambda w, r, s: (w.get_cleaned_data_for_step(r, s, '1') or {}).get('leave_message', True)
