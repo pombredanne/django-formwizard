@@ -170,15 +170,23 @@ class FormTests(TestCase):
 
     def test_formset_instance(self):
         request = get_request()
-        the_instance1, created = User.objects.get_or_create(username='testuser1')
-        the_instance2, created = User.objects.get_or_create(username='testuser2')
-        testform = TestWizard('formwizard.storage.session.SessionStorage', [('start', UserFormSet), ('step2', Step2)], instance_list={'start': User.objects.filter(username='testuser1')})
-        response, storage = testform(request, testmode=True)
+        the_instance1, created = User.objects.get_or_create(
+            username='testuser1')
+        the_instance2, created = User.objects.get_or_create(
+            username='testuser2')
+        testform = TestWizard.as_view(
+            'formwizard.storage.session.SessionStorage',
+            [('start', UserFormSet), ('step2', Step2)],
+            instance_list={'start': User.objects.filter(username='testuser1')})
+        response, instance, storage = testform(request, testmode=True)
 
-        self.assertEqual(list(testform.get_form_instance(request, storage, 'start')), [the_instance1])
-        self.assertEqual(testform.get_form_instance(request, storage, 'non_exist_instance'), None)
+        self.assertEqual(list(instance.get_form_instance(
+            request, storage, 'start')), [the_instance1])
+        self.assertEqual(instance.get_form_instance(
+            request, storage, 'non_exist_instance'), None)
 
-        self.assertEqual(testform.get_form(request, storage).initial_form_count(), 1)
+        self.assertEqual(instance.get_form(
+            request, storage).initial_form_count(), 1)
 
     def test_done(self):
         request = get_request()
