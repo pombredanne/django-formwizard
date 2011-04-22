@@ -18,8 +18,10 @@ To actually use the named url formwizard, we have to create a instance. This can
 
 .. code-block:: python
 
-    feedback_form_instance = FeedbackWizard([FeedbackStep1, FeedbackStep2, \
-        FeedbackStep3], url_name='wiz_feedback')
+    feedback_form_instance = FeedbackWizard([FeedbackStep1,
+                                             FeedbackStep2,
+                                             FeedbackStep3],
+                                            url_name='wiz_feedback')
 
 This differs a bit from the normal FormWizard. You have to add a url_name to define the name of the url which will be used to reverse generate the urls.
 

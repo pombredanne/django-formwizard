@@ -30,10 +30,14 @@ But remember, file uploads won't work!
         email = forms.EmailField()
 
     class FeedbackStep2(forms.Form):
-        support = forms.ChoiceField(choices=(('like', 'like it'), \
-            ('dontlike', 'dont like it')))
-        performance = forms.ChoiceField(choices=(('like', 'like it'), \
-            ('dontlike', 'dont like it')))
+        support = forms.ChoiceField(choices=(
+            ('like', 'like it'),
+            ('dontlike', 'dont like it')
+        ))
+        performance = forms.ChoiceField(choices=(
+            ('like', 'like it'),
+            ('dontlike', 'dont like it')
+        ))
 
     class FeedbackStep3(forms.Form):
         message = forms.CharField(widget=forms.Textarea())
@@ -54,14 +58,14 @@ The `done` method in this example will render the template `support/done.html` a
     from formwizard.forms import SessionFormWizard
 
     class FeedbackWizard(SessionFormWizard):
-        def done(self, request, storage, form_list):
+        def done(self, form_list):
             return render_to_response(
                 'support/done.html',
                 {'form_list': [form.cleaned_data for form in form_list]},
-                context_instance=RequestContext(request)
+                context_instance=RequestContext(self.request)
             )
 
-        def get_template(self, request, storage):
+        def get_template(self):
             return ['support/form.html',]
 
 Create the formwizard instance
@@ -71,8 +75,9 @@ To actually use the form wizard, we have to create a instance of the class. This
 
 .. code-block:: python
 
-    feedback_form_instance = FeedbackWizard([FeedbackStep1, FeedbackStep2, \
-        FeedbackStep3])
+    feedback_form_instance = FeedbackWizard([FeedbackStep1,
+                                             FeedbackStep2,
+                                             FeedbackStep3])
 
 After creating the form wizard instance, we need to make the wizard public accessible using a `urls.py`.
 
