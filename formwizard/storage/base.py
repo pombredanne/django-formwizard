@@ -37,3 +37,4 @@ class BaseStorage(object):
 
     def update_response(self, response):
         raise NotImplementedError()
+

@@ -101,3 +101,4 @@ class SessionStorage(BaseStorage):
 
     def update_response(self, response):
         return response
+

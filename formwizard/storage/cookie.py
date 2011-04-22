@@ -102,7 +102,8 @@ class CookieStorage(BaseStorage):
 
     def update_response(self, response):
         if len(self.cookie_data) > 0:
-            response.set_cookie(self.prefix, self.create_cookie_data(self.cookie_data))
+            response.set_cookie(self.prefix,
+                                self.create_cookie_data(self.cookie_data))
         else:
             response.delete_cookie(self.prefix)
         return response
@@ -120,9 +121,12 @@ class CookieStorage(BaseStorage):
         raise SuspiciousOperation('FormWizard cookie manipulated')
 
     def get_cookie_hash(self, data):
-        return hmac.new('%s$%s' % (settings.SECRET_KEY, self.prefix), data, sha_hmac).hexdigest()
+        return hmac.new('%s$%s' % (settings.SECRET_KEY, self.prefix),
+                        data,
+                        sha_hmac).hexdigest()
 
     def create_cookie_data(self, data):
         encoder = json.JSONEncoder(separators=(',', ':'))
         encoded_data = encoder.encode(data)
         return '%s$%s' % (self.get_cookie_hash(encoded_data), encoded_data)
+
