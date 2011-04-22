@@ -9,25 +9,30 @@ class FeedbackStep1(forms.Form):
     email = forms.EmailField()
 
 class FeedbackStep2(forms.Form):
-    support = forms.ChoiceField(choices=(('like', 'like it'), \
-        ('dontlike', 'dont like it')))
-    performance = forms.ChoiceField(choices=(('like', 'like it'), \
-        ('dontlike', 'dont like it')))
+    support = forms.ChoiceField(choices=(
+        ('like', 'like it'),
+        ('dontlike', 'dont like it')
+    ))
+    performance = forms.ChoiceField(choices=(
+        ('like', 'like it'),
+        ('dontlike', 'dont like it')
+    ))
 
 class FeedbackStep3(forms.Form):
     message = forms.CharField(widget=forms.Textarea())
 
 class FeedbackWizard(SessionFormWizard):
-    def done(self, request, storage, form_list):
+    def done(self, form_list):
         return render_to_response(
             'testapp/done.html',
             {'form_list': [form.cleaned_data for form in form_list]},
-            context_instance=RequestContext(request)
+            context_instance=RequestContext(self.request)
         )
 
-    def get_template(self, request, storage):
-        print 'called'
+    def get_template(self):
         return ['testapp/form.html',]
 
-feedback_form_instance = FeedbackWizard.as_view([FeedbackStep1, FeedbackStep2, \
-    FeedbackStep3])
+feedback_form_instance = FeedbackWizard.as_view([FeedbackStep1,
+                                                 FeedbackStep2,
+                                                 FeedbackStep3])
+
