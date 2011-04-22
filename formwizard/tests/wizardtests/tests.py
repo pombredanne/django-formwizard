@@ -72,7 +72,8 @@ class WizardTests(object):
         self.assertEqual(response.context['form_step'], 'form2')
 
         response = self.client.post(
-            self.wizard_url, {'form_prev_step': response.context['form_prev_step']})
+            self.wizard_url,
+            {'form_prev_step': response.context['form_prev_step']})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['form_step'], 'form1')

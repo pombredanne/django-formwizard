@@ -28,21 +28,21 @@ Page4 = formset_factory(Page3, extra=2)
 class ContactWizard(FormWizard):
     file_storage = temp_storage
 
-    def done(self, request, storage, form_list, **kwargs):
+    def done(self, form_list, **kwargs):
         c = Context({
             'form_list': [x.cleaned_data for x in form_list],
-            'all_cleaned_data': self.get_all_cleaned_data(request, storage)
+            'all_cleaned_data': self.get_all_cleaned_data()
         })
 
         for form in self.form_list.keys():
-            c[form] = self.get_cleaned_data_for_step(request, storage, form)
+            c[form] = self.get_cleaned_data_for_step(form)
 
-        c['this_will_fail'] = self.get_cleaned_data_for_step(request, storage, 'this_will_fail')
+        c['this_will_fail'] = self.get_cleaned_data_for_step('this_will_fail')
         return HttpResponse(Template('').render(c))
 
-    def get_template_context(self, request, storage, form):
-        context = super(ContactWizard, self).get_template_context(request, storage, form)
-        if storage.get_current_step() == 'form2':
+    def get_template_context(self, form):
+        context = super(ContactWizard, self).get_template_context(form)
+        if self.storage.get_current_step() == 'form2':
             context.update({'another_var': True})
         return context
 
