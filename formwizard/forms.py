@@ -146,6 +146,15 @@ class FormWizard(View):
                     self.determine_step(request, storage)),
             )
         else:
+            # Check if form was refreshed
+            current_step = self.determine_step(request, storage)
+            prev_step = self.get_prev_step(request, storage, step=current_step)
+            for value in request.POST:
+                if prev_step and not value.startswith(current_step) and value.startswith(prev_step):
+                    # form refreshed, change current step
+                    storage.set_current_step(prev_step)
+                    break
+
             form = self.get_form(request, storage, data=request.POST,
                 files=request.FILES)
             if form.is_valid():
@@ -552,8 +561,13 @@ class NamedUrlFormWizard(FormWizard):
                 self.update_extra_context(request, storage,
                     kwargs['extra_context'])
 
+            if request.GET:
+                query_string = "?%s" % request.GET.urlencode()
+            else:
+                query_string = ""
             return HttpResponseRedirect(reverse(self.url_name,
-                kwargs={'step': self.determine_step(request, storage)}))
+                kwargs={'step': self.determine_step(request, storage)}) +
+                query_string)
         else:
             if 'extra_context' in kwargs:
                 self.update_extra_context(request, storage,
