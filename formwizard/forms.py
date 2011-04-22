@@ -26,10 +26,11 @@ class FormWizard(View):
 
     @classonlymethod
     def as_view(cls, *args, **kwargs):
-        return super(FormWizard, cls).as_view(**cls.build_init_kwargs(*args, **kwargs))
+        return super(FormWizard, cls).as_view(
+            **cls.build_init_kwargs(*args, **kwargs))
 
     @classmethod
-    def build_init_kwargs(cls, storage, form_list, initial_list={},
+    def build_init_kwargs(cls, storage_name, form_list, initial_list={},
         instance_list={}, condition_list={}):
         """
         Creates a dict with all needed parameters for the form wizard instances.
@@ -49,7 +50,7 @@ class FormWizard(View):
 
         kwargs = {}
         init_form_list = SortedDict()
-        kwargs['storage_name'] = storage
+        kwargs['storage_name'] = storage_name
 
         assert len(form_list) > 0, 'at least one form is needed'
 
@@ -75,16 +76,6 @@ class FormWizard(View):
 
         return kwargs
 
-    def get_form_list(self, request, storage):
-        form_list = SortedDict()
-        for form_key, form_class in self.form_list.items():
-            condition = self.condition_list.get(form_key, True)
-            if callable(condition):
-                condition = condition(self, request, storage)
-            if condition:
-                form_list[form_key] = form_class
-        return form_list
-
     def __repr__(self):
         return '%s: form_list: %s, initial_list: %s' % (
             self.get_wizard_name(), self.form_list, self.initial_list)
@@ -92,39 +83,53 @@ class FormWizard(View):
     def dispatch(self, request, *args, **kwargs):
         """
         This method gets called by the routing engine. The first argument is
-        `request` which contains a `HttpRequest` instance. The request is
-        stored in `request` for later use.
+        `request` which contains a `HttpRequest` instance.
+        The request is stored in `self.request` for later use. The storage
+        instance is stored in `self.storage`.
 
-        After processing the request using the `process_request` method, the
+        After processing the request using the `dispatch` method, the
         response gets updated by the storage engine (for example add cookies).
         """
 
-        storage = get_storage(self.storage_name,
-            self.get_wizard_name(), request, getattr(self, 'file_storage', None))
-        response = super(FormWizard, self).dispatch(request, storage, *args, **kwargs)
-        storage.update_response(response)
+        self. storage = get_storage(
+            self.storage_name,
+            self.get_wizard_name(),
+            request,
+            getattr(self, 'file_storage', None)
+        )
+        response = super(FormWizard, self).dispatch(request, *args, **kwargs)
+        self.storage.update_response(response)
 
         if kwargs.get('testmode', False):
-            return response, self, storage
+            return response, self
         else:
             return response
 
-    def get(self, request, storage, *args, **kwargs):
+    def get_form_list(self):
+        form_list = SortedDict()
+        for form_key, form_class in self.form_list.items():
+            condition = self.condition_list.get(form_key, True)
+            if callable(condition):
+                condition = condition(self)
+            if condition:
+                form_list[form_key] = form_class
+        return form_list
+
+    def get(self, *args, **kwargs):
         """
         If the wizard gets a GET request, it assumes that the user just
         starts at the first step or wants to restart the process. The wizard
         will be resetted before rendering the first step.
         """
-        self.reset_wizard(request, storage)
+        self.reset_wizard()
 
         if 'extra_context' in kwargs:
-            self.update_extra_context(request, storage,
-                kwargs['extra_context'])
+            self.update_extra_context(kwargs['extra_context'])
 
-        storage.set_current_step(self.get_first_step(request, storage))
-        return self.render(request, storage, self.get_form(request, storage))
+        self.storage.set_current_step(self.get_first_step())
+        return self.render(self.get_form())
 
-    def post(self, request, storage, *args, **kwargs):
+    def post(self, *args, **kwargs):
         """
         Generates a HttpResponse which contains either the current step (if
         form validation wasn't successful), the next step (if the current step
@@ -132,60 +137,58 @@ class FormWizard(View):
         available)
         """
         if 'extra_context' in kwargs:
-            self.update_extra_context(request, storage,
-                kwargs['extra_context'])
+            self.update_extra_context(kwargs['extra_context'])
 
-        if request.POST.has_key('form_prev_step') and \
-            self.get_form_list(request, storage).has_key(
-            request.POST['form_prev_step']):
-            storage.set_current_step(request.POST['form_prev_step'])
-            form = self.get_form(request, storage,
-                data=storage.get_step_data(
-                    self.determine_step(request, storage)),
-                files=storage.get_step_files(
-                    self.determine_step(request, storage)),
+        if self.request.POST.has_key('form_prev_step') and \
+            self.get_form_list().has_key(self.request.POST['form_prev_step']):
+            self.storage.set_current_step(self.request.POST['form_prev_step'])
+            form = self.get_form(
+                data=self.storage.get_step_data(self.determine_step()),
+                files=self.storage.get_step_files(self.determine_step()),
             )
         else:
             # Check if form was refreshed
-            current_step = self.determine_step(request, storage)
-            prev_step = self.get_prev_step(request, storage, step=current_step)
-            for value in request.POST:
-                if prev_step and not value.startswith(current_step) and value.startswith(prev_step):
+            current_step = self.determine_step()
+            prev_step = self.get_prev_step(step=current_step)
+            for value in self.request.POST:
+                if prev_step and \
+                    not value.startswith(current_step) and \
+                    value.startswith(prev_step):
                     # form refreshed, change current step
-                    storage.set_current_step(prev_step)
+                    self.storage.set_current_step(prev_step)
                     break
 
-            form = self.get_form(request, storage, data=request.POST,
-                files=request.FILES)
+            form = self.get_form(data=self.request.POST,
+                                 files=self.request.FILES)
             if form.is_valid():
-                storage.set_step_data(self.determine_step(request, storage),
-                    self.process_step(request, storage, form))
-                storage.set_step_files(self.determine_step(request, storage),
-                    self.process_step_files(request, storage, form))
+                self.storage.set_step_data(self.determine_step(),
+                                           self.process_step(form))
+                self.storage.set_step_files(self.determine_step(),
+                                            self.process_step_files(form))
 
-                current_step = self.determine_step(request, storage)
-                last_step = self.get_last_step(request, storage)
+                current_step = self.determine_step()
+                last_step = self.get_last_step()
 
                 if current_step == last_step:
-                    return self.render_done(request, storage, form, **kwargs)
+                    return self.render_done(form, **kwargs)
                 else:
-                    return self.render_next_step(request, storage, form)
+                    return self.render_next_step(form)
 
-        return self.render(request, storage, form)
+        return self.render(form)
 
-    def render_next_step(self, request, storage, form, **kwargs):
+    def render_next_step(self, form, **kwargs):
         """
         Gets called when the next step/form should be rendered. `form`
         contains the last/current form.
         """
-        next_step = self.get_next_step(request, storage)
-        new_form = self.get_form(request, storage, next_step,
-            data=storage.get_step_data(next_step),
-            files=storage.get_step_files(next_step))
-        storage.set_current_step(next_step)
-        return self.render(request, storage, new_form, **kwargs)
+        next_step = self.get_next_step()
+        new_form = self.get_form(next_step,
+                                 data=self.storage.get_step_data(next_step),
+                                 files=self.storage.get_step_files(next_step))
+        self.storage.set_current_step(next_step)
+        return self.render(new_form, **kwargs)
 
-    def render_done(self, request, storage, form, **kwargs):
+    def render_done(self, form, **kwargs):
         """
         Gets called when all forms passed. The method should also re-validate
         all steps to prevent manipulation. If any form don't validate,
@@ -193,19 +196,22 @@ class FormWizard(View):
         call `done`.
         """
         final_form_list = []
-        for form_key in self.get_form_list(request, storage).keys():
-            form_obj = self.get_form(request, storage, step=form_key,
-                data=storage.get_step_data(form_key),
-                files=storage.get_step_files(form_key))
+        for form_key in self.get_form_list().keys():
+            form_obj = self.get_form(
+                step=form_key,
+                data=self.storage.get_step_data(form_key),
+                files=self.storage.get_step_files(form_key)
+            )
             if not form_obj.is_valid():
-                return self.render_revalidation_failure(request, storage,
-                    form_key, form_obj, **kwargs)
+                return self.render_revalidation_failure(form_key,
+                                                        form_obj,
+                                                        **kwargs)
             final_form_list.append(form_obj)
-        done_response = self.done(request, storage, final_form_list, **kwargs)
-        self.reset_wizard(request, storage)
+        done_response = self.done(final_form_list, **kwargs)
+        self.reset_wizard()
         return done_response
 
-    def get_form_prefix(self, request, storage, step=None, form=None):
+    def get_form_prefix(self, step=None, form=None):
         """
         Returns the prefix which will be used when calling the actual form for
         the given step. `step` contains the step-name, `form` the form which
@@ -215,10 +221,10 @@ class FormWizard(View):
         automatically.
         """
         if step is None:
-            step = self.determine_step(request, storage)
+            step = self.determine_step()
         return str(step)
 
-    def get_form_initial(self, request, storage, step):
+    def get_form_initial(self, step):
         """
         Returns a dictionary which will be passed to the form for `step`
         as `initial`. If no initial data was provied while initializing the
@@ -226,7 +232,7 @@ class FormWizard(View):
         """
         return self.initial_list.get(step, {})
 
-    def get_form_instance(self, request, storage, step):
+    def get_form_instance(self, step):
         """
         Returns a object which will be passed to the form for `step`
         as `instance`. If no instance object was provied while initializing
@@ -234,7 +240,7 @@ class FormWizard(View):
         """
         return self.instance_list.get(step, None)
 
-    def get_form(self, request, storage, step=None, data=None, files=None):
+    def get_form(self, step=None, data=None, files=None):
         """
         Constructs the form for a given `step`. If no `step` is defined, the
         current step will be determined automatically.
@@ -243,67 +249,66 @@ class FormWizard(View):
         new form.
         """
         if step is None:
-            step = self.determine_step(request, storage)
+            step = self.determine_step()
         kwargs = {
             'data': data,
             'files': files,
-            'prefix': self.get_form_prefix(request, storage, step,
-                self.form_list[step]),
-            'initial': self.get_form_initial(request, storage, step),
+            'prefix': self.get_form_prefix(step, self.form_list[step]),
+            'initial': self.get_form_initial(step),
         }
         if issubclass(self.form_list[step], forms.ModelForm):
-            kwargs.update({'instance':
-                self.get_form_instance(request, storage, step)})
+            kwargs.update({'instance': self.get_form_instance(step)})
         elif issubclass(self.form_list[step], forms.models.BaseModelFormSet):
-            kwargs.update({'queryset':
-                self.get_form_instance(request, storage, step)})
+            kwargs.update({'queryset': self.get_form_instance(step)})
         return self.form_list[step](**kwargs)
 
-    def process_step(self, request, storage, form):
+    def process_step(self, form):
         """
         This method is used to postprocess the form data. For example, this
         could be used to conditionally skip steps if a special field is
         checked. By default, it returns the raw `form.data` dictionary.
         """
-        return self.get_form_step_data(request, storage, form)
+        return self.get_form_step_data(form)
 
-    def process_step_files(self, request, storage, form):
-        return self.get_form_step_files(request, storage, form)
+    def process_step_files(self, form):
+        return self.get_form_step_files(form)
 
-    def render_revalidation_failure(self, request, storage, step, form, **kwargs):
+    def render_revalidation_failure(self, step, form, **kwargs):
         """
         Gets called when a form doesn't validate before rendering the done
         view. By default, it resets the current step to the first failing
         form and renders the form.
         """
-        storage.set_current_step(step)
-        return self.render(request, storage, form, **kwargs)
+        self.storage.set_current_step(step)
+        return self.render(form, **kwargs)
 
-    def get_form_step_data(self, request, storage, form):
+    def get_form_step_data(self, form):
         """
         Is used to return the raw form data. You may use this method to
         manipulate the data.
         """
         return form.data
 
-    def get_form_step_files(self, request, storage, form):
+    def get_form_step_files(self, form):
         """
         Is used to return the raw form files. You may use this method to
         manipulate the data.
         """
         return form.files
 
-    def get_all_cleaned_data(self, request, storage):
+    def get_all_cleaned_data(self):
         """
-        Returns a merged dictionary of all step' cleaned_data dictionaries.
+        Returns a merged dictionary of all step cleaned_data dictionaries.
         If a step contains a `FormSet`, the key will be prefixed with formset
         and contain a list of the formset' cleaned_data dictionaries.
         """
         cleaned_dict = {}
-        for form_key in self.get_form_list(request, storage).keys():
-            form_obj = self.get_form(request, storage, step=form_key,
-                data=storage.get_step_data(form_key),
-                files=storage.get_step_files(form_key))
+        for form_key in self.get_form_list().keys():
+            form_obj = self.get_form(
+                step=form_key,
+                data=self.storage.get_step_data(form_key),
+                files=self.storage.get_step_files(form_key)
+            )
             if form_obj.is_valid():
                 if isinstance(form_obj.cleaned_data, list):
                     cleaned_dict.update({
@@ -313,86 +318,85 @@ class FormWizard(View):
                     cleaned_dict.update(form_obj.cleaned_data)
         return cleaned_dict
 
-    def get_cleaned_data_for_step(self, request, storage, step):
+    def get_cleaned_data_for_step(self, step):
         """
         Returns the cleaned data for a given `step`. Before returning the
         cleaned data, the stored values are being revalidated through the
         form. If the data doesn't validate, None will be returned.
         """
         if self.form_list.has_key(step):
-            form_obj = self.get_form(request, storage, step=step,
-                data=storage.get_step_data(step),
-                files=storage.get_step_files(step))
+            form_obj = self.get_form(step=step,
+                                     data=self.storage.get_step_data(step),
+                                     files=self.storage.get_step_files(step))
             if form_obj.is_valid():
                 return form_obj.cleaned_data
         return None
 
-    def determine_step(self, request, storage):
+    def determine_step(self):
         """
         Returns the current step. If no current step is stored in the storage
         backend, the first step will be returned.
         """
-        return storage.get_current_step() or \
-            self.get_first_step(request, storage)
+        return self.storage.get_current_step() or self.get_first_step()
 
-    def get_first_step(self, request, storage):
+    def get_first_step(self):
         """
         Returns the name of the first step.
         """
-        return self.get_form_list(request, storage).keys()[0]
+        return self.get_form_list().keys()[0]
 
-    def get_last_step(self, request, storage):
+    def get_last_step(self):
         """
         Returns the name of the last step.
         """
-        return self.get_form_list(request, storage).keys()[-1]
+        return self.get_form_list().keys()[-1]
 
-    def get_next_step(self, request, storage, step=None):
+    def get_next_step(self, step=None):
         """
         Returns the next step after the given `step`. If no more steps are
         available, None will be returned. If the `step` argument is None, the
         current step will be determined automatically.
         """
-        form_list = self.get_form_list(request, storage)
+        form_list = self.get_form_list()
 
         if step is None:
-            step = self.determine_step(request, storage)
+            step = self.determine_step()
         key = form_list.keyOrder.index(step) + 1
         if len(form_list.keyOrder) > key:
             return form_list.keyOrder[key]
         else:
             return None
 
-    def get_prev_step(self, request, storage, step=None):
+    def get_prev_step(self, step=None):
         """
         Returns the previous step before the given `step`. If there are no
         steps available, None will be returned. If the `step` argument is
         None, the current step will be determined automatically.
         """
-        form_list = self.get_form_list(request, storage)
+        form_list = self.get_form_list()
 
         if step is None:
-            step = self.determine_step(request, storage)
+            step = self.determine_step()
         key = form_list.keyOrder.index(step) - 1
         if key < 0:
             return None
         else:
             return form_list.keyOrder[key]
 
-    def get_step_index(self, request, storage, step=None):
+    def get_step_index(self, step=None):
         """
         Returns the index for the given `step` name. If no step is given,
         the current step will be used to get the index.
         """
         if step is None:
-            step = self.determine_step(request, storage)
-        return self.get_form_list(request, storage).keyOrder.index(step)
+            step = self.determine_step()
+        return self.get_form_list().keyOrder.index(step)
 
-    def get_num_steps(self, request, storage):
+    def get_num_steps(self):
         """
         Returns the total number of steps/forms in this the wizard.
         """
-        return len(self.get_form_list(request, storage))
+        return len(self.get_form_list())
 
     def get_wizard_name(self):
         """
@@ -402,68 +406,67 @@ class FormWizard(View):
         """
         return self.__class__.__name__
 
-    def reset_wizard(self, request, storage):
+    def reset_wizard(self):
         """
         Resets the user-state of the wizard.
         """
-        storage.reset()
+        self.storage.reset()
 
-    def get_template(self, request, storage):
+    def get_template(self):
         """
         Returns the templates to be used for rendering the wizard steps. This
         method can return a list of templates or a single string.
         """
         return 'formwizard/wizard.html'
 
-    def get_template_context(self, request, storage, form):
+    def get_template_context(self, form):
         """
         Returns the template context for a step. You can overwrite this method
         to add more data for all or some steps.
         Example:
         class MyWizard(FormWizard):
-            def get_template_context(self, request, storage, form):
-                context = super(MyWizard, self).get_template_context(
-                    request, storage, form)
-                if storage.get_current_step() == 'my_step_name':
+            def get_template_context(self, form):
+                context = super(MyWizard, self).get_template_context(form)
+                if self.storage.get_current_step() == 'my_step_name':
                     context.update({'another_var': True})
                 return context
         """
         return {
-            'extra_context': self.get_extra_context(request, storage),
-            'form_step': self.determine_step(request, storage),
-            'form_first_step': self.get_first_step(request, storage),
-            'form_last_step': self.get_last_step(request, storage),
-            'form_prev_step': self.get_prev_step(request, storage),
-            'form_next_step': self.get_next_step(request, storage),
-            'form_step0': int(self.get_step_index(request, storage)),
-            'form_step1': int(self.get_step_index(request, storage)) + 1,
-            'form_step_count': self.get_num_steps(request, storage),
+            'extra_context': self.get_extra_context(),
+            'form_step': self.determine_step(),
+            'form_first_step': self.get_first_step(),
+            'form_last_step': self.get_last_step(),
+            'form_prev_step': self.get_prev_step(),
+            'form_next_step': self.get_next_step(),
+            'form_step0': int(self.get_step_index()),
+            'form_step1': int(self.get_step_index()) + 1,
+            'form_step_count': self.get_num_steps(),
             'form': form,
         }
 
-    def get_extra_context(self, request, storage):
+    def get_extra_context(self):
         """
         Returns the extra data currently stored in the storage backend.
         """
-        return storage.get_extra_context_data()
+        return self.storage.get_extra_context_data()
 
-    def update_extra_context(self, request, storage, new_context):
+    def update_extra_context(self, new_context):
         """
         Updates the currently stored extra context data. Already stored extra
         context will be kept!
         """
-        context = self.get_extra_context(request,storage)
+        context = self.get_extra_context()
         context.update(new_context)
-        return storage.set_extra_context_data(context)
+        return self.storage.set_extra_context_data(context)
 
-    def render(self, request, storage, form, **kwargs):
+    def render(self, form, **kwargs):
         """
         Renders the acutal `form`. This method can be used to pre-process data
         or conditionally skip steps.
         """
-        return self.render_template(request, storage, form)
+        return self.render_template(form)
 
-    def render_template(self, request, storage, form=None):
+    def render_template(self, form=None):
         """
         Returns a `HttpResponse` containing the rendered form step. Available
         template context variables are:
@@ -480,12 +483,12 @@ class FormWizard(View):
          * `form` - form instance of the current step
         """
 
-        form = form or self.get_form(request, storage)
-        return render_to_response(self.get_template(request, storage),
-            self.get_template_context(request, storage, form),
-            context_instance=RequestContext(request))
+        form = form or self.get_form()
+        return render_to_response(self.get_template(),
+            self.get_template_context(form),
+            context_instance=RequestContext(self.request))
 
-    def done(self, request, storage, form_list, **kwargs):
+    def done(self, form_list, **kwargs):
         """
         This method muss be overrided by a subclass to process to form data
         after processing all steps.
@@ -548,108 +551,97 @@ class NamedUrlFormWizard(FormWizard):
 
         return initkwargs
 
-    def get(self, request, storage, *args, **kwargs):
+    def get(self, *args, **kwargs):
         """
         This renders the form or, if needed, does the http redirects.
         """
         if not kwargs.has_key('step'):
-            if request.GET.has_key('reset'):
-                self.reset_wizard(request, storage)
-                storage.set_current_step(self.get_first_step(request, storage))
+            if self.request.GET.has_key('reset'):
+                self.reset_wizard()
+                self.storage.set_current_step(self.get_first_step())
 
             if 'extra_context' in kwargs:
-                self.update_extra_context(request, storage,
-                    kwargs['extra_context'])
+                self.update_extra_context(kwargs['extra_context'])
 
-            if request.GET:
-                query_string = "?%s" % request.GET.urlencode()
+            if self.request.GET:
+                query_string = "?%s" % self.request.GET.urlencode()
             else:
                 query_string = ""
             return HttpResponseRedirect(reverse(self.url_name,
-                kwargs={'step': self.determine_step(request, storage)}) +
-                query_string)
+                kwargs={'step': self.determine_step()}) + query_string)
         else:
             if 'extra_context' in kwargs:
-                self.update_extra_context(request, storage,
-                    kwargs['extra_context'])
+                self.update_extra_context(kwargs['extra_context'])
 
             step_url = kwargs.get('step', None)
 
             # is the current step the "done" name/view?
             if step_url == self.done_step_name:
-                return self.render_done(request, storage,
-                    self.get_form(request, storage,
-                        step=self.get_last_step(request, storage),
-                        data=storage.get_step_data(
-                            self.get_last_step(request, storage)),
-                        files=storage.get_step_files(
-                            self.get_last_step(request, storage))), **kwargs)
+                return self.render_done(self.get_form(
+                    step=self.get_last_step(),
+                    data=self.storage.get_step_data(self.get_last_step()),
+                    files=self.storage.get_step_files(self.get_last_step())
+                ), **kwargs)
 
             # is the url step name not equal to the step in the storage?
             # if yes, change the step in the storage (if name exists)
-            if step_url <> self.determine_step(request, storage):
-                if self.get_form_list(request, storage).has_key(step_url):
-                    storage.set_current_step(step_url)
+            if step_url <> self.determine_step():
+                if self.get_form_list().has_key(step_url):
+                    self.storage.set_current_step(step_url)
 
-                    return self.render(request, storage,
-                        self.get_form(request, storage,
-                            data=storage.get_current_step_data(),
-                            files=storage.get_current_step_files()
-                        ), **kwargs)
+                    return self.render(self.get_form(
+                        data=self.storage.get_current_step_data(),
+                        files=self.storage.get_current_step_files()
+                    ), **kwargs)
                 else:
                     # invalid step name, reset to first and redirect.
-                    storage.set_current_step(
-                        self.get_first_step(request, storage))
+                    self.storage.set_current_step(self.get_first_step())
 
                     return HttpResponseRedirect(reverse(self.url_name,
-                        kwargs={'step': storage.get_current_step()}))
+                        kwargs={'step': self.storage.get_current_step()}))
             else:
                 # url step name and storage step name are equal, render!
-                return self.render(request, storage,
-                    self.get_form(request, storage,
-                        data=storage.get_current_step_data(),
-                        files=storage.get_current_step_files()
-                    ), **kwargs)
+                return self.render(self.get_form(
+                    data=self.storage.get_current_step_data(),
+                    files=self.storage.get_current_step_files()
+                ), **kwargs)
 
-    def post(self, request, storage, *args, **kwargs):
+    def post(self, *args, **kwargs):
         """
         Do a redirect if user presses the prev. step button. The rest of this
         is super'd from FormWizard.
         """
-        if request.POST.has_key('form_prev_step') and \
-            self.get_form_list(request, storage).has_key(
-                request.POST['form_prev_step']):
+        if self.request.POST.has_key('form_prev_step') and \
+            self.get_form_list().has_key(self.request.POST['form_prev_step']):
 
-            storage.set_current_step(request.POST['form_prev_step'])
+            self.storage.set_current_step(self.request.POST['form_prev_step'])
             return HttpResponseRedirect(reverse(self.url_name, kwargs={
-                'step': storage.get_current_step()
+                'step': self.storage.get_current_step()
             }))
         else:
-            return super(NamedUrlFormWizard, self).post(
-                request, storage, *args, **kwargs)
+            return super(NamedUrlFormWizard, self).post(*args, **kwargs)
 
-    def render_next_step(self, request, storage, form, **kwargs):
+    def render_next_step(self, form, **kwargs):
         """
         When using the NamedUrlFormWizard, we have to redirect to update the
         browser's url to match the shown step.
         """
-        next_step = self.get_next_step(request, storage)
-        storage.set_current_step(next_step)
-        return HttpResponseRedirect(
-            reverse(self.url_name, kwargs={'step': next_step}))
+        next_step = self.get_next_step()
+        self.storage.set_current_step(next_step)
+        return HttpResponseRedirect(reverse(self.url_name,
+                                            kwargs={'step': next_step}))
 
-    def render_revalidation_failure(self, request, storage, failed_step,
-        form, **kwargs):
+    def render_revalidation_failure(self, failed_step, form, **kwargs):
         """
         When a step fails, we have to redirect the user to the first failing
         step.
         """
-        storage.set_current_step(failed_step)
+        self.storage.set_current_step(failed_step)
         return HttpResponseRedirect(reverse(self.url_name, kwargs={
-            'step': storage.get_current_step()
+            'step': self.storage.get_current_step()
         }))
 
-    def render_done(self, request, storage, form, **kwargs):
+    def render_done(self, form, **kwargs):
         """
         When rendering the done view, we have to redirect first (if the url
         name doesn't fit).
@@ -660,9 +652,7 @@ class NamedUrlFormWizard(FormWizard):
                 'step': self.done_step_name
             }))
 
-        return super(NamedUrlFormWizard, self).render_done(
-            request, storage, form, **kwargs)
-
+        return super(NamedUrlFormWizard, self).render_done(form, **kwargs)
 
 class NamedUrlSessionFormWizard(NamedUrlFormWizard):
     """
