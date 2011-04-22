@@ -12,7 +12,8 @@ class TestCookieStorage(TestStorage, TestCase):
         request = get_request()
         storage = self.get_storage()('wizard1', request, None)
 
-        storage.request.COOKIES[storage.prefix] = storage.create_cookie_data({'key1': 'value1'})
+        storage.request.COOKIES[storage.prefix] = storage.create_cookie_data(
+            {'key1': 'value1'})
         self.assertEqual(storage.load_cookie_data(), {'key1': 'value1'})
 
         storage.request.COOKIES[storage.prefix] = 'i_am_manipulated'
@@ -29,7 +30,8 @@ class TestCookieStorage(TestStorage, TestCase):
         response = HttpResponse()
         storage.update_response(response)
 
-        self.assertEqual(response.cookies[storage.prefix].value, storage.create_cookie_data(storage.cookie_data))
+        self.assertEqual(response.cookies[storage.prefix].value,
+                         storage.create_cookie_data(storage.cookie_data))
 
         storage.cookie_data = {}
         storage.update_response(response)

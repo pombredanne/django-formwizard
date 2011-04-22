@@ -35,7 +35,10 @@ class TestStorage(object):
         request = get_request()
         storage = self.get_storage()('wizard1', request, None)
         step1 = 'start'
-        step_data1 = {'field1': 'data1', 'field2': 'data2', 'field3': datetime.now(), 'field4': self.testuser}
+        step_data1 = {'field1': 'data1',
+                      'field2': 'data2',
+                      'field3': datetime.now(),
+                      'field4': self.testuser}
 
         self.assertEqual(storage.get_step_data(step1), None)
 
@@ -52,7 +55,10 @@ class TestStorage(object):
     def test_extra_context(self):
         request = get_request()
         storage = self.get_storage()('wizard1', request, None)
-        extra_context = {'key1': 'data1', 'key2': 'data2', 'key3': datetime.now(), 'key4': self.testuser}
+        extra_context = {'key1': 'data1',
+                         'key2': 'data2',
+                         'key3': datetime.now(),
+                         'key4': self.testuser}
 
         self.assertEqual(storage.get_extra_context_data(), {})
 
@@ -65,3 +71,4 @@ class TestStorage(object):
         storage.set_extra_context_data(extra_context)
         storage2 = self.get_storage()('wizard2', request, None)
         self.assertEqual(storage2.get_extra_context_data(), {})
+
