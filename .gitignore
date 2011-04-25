@@ -1,1 +1,3 @@
 local_database.db
+*.egg-info
+*.egg
