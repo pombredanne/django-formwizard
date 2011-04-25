@@ -11,8 +11,9 @@ from django.utils.decorators import classonlymethod
 
 from django import forms
 from django.forms import formsets
+from django.views.generic import TemplateView
 
-class FormWizard(View):
+class FormWizard(TemplateView):
     """
     The FormWizard is used to create multi-page forms and handles all the
     storage and validation stuff. The wizard is based on Django's generic
@@ -24,6 +25,7 @@ class FormWizard(View):
     initial_list = None
     instance_list = None
     condition_list = None
+    template_name = 'formwizard/wizard.html'
 
     @classonlymethod
     def as_view(cls, *args, **kwargs):
@@ -504,13 +506,6 @@ class FormWizard(View):
         Resets the user-state of the wizard.
         """
         self.storage.reset()
-
-    def get_template(self):
-        """
-        Returns the templates to be used for rendering the wizard steps. This
-        method can return a list of templates or a single string.
-        """
-        return 'formwizard/wizard.html'
 
     def get_template_context(self, form):
         """
