@@ -36,4 +36,3 @@ class TestCookieStorage(TestStorage, TestCase):
         storage.cookie_data = {}
         storage.update_response(response)
         self.assertEqual(response.cookies[storage.prefix].value, '')
-

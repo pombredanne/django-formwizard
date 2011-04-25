@@ -1,11 +1,12 @@
-from formwizard.storage.base import BaseStorage, NoFileStorageException
-from django.core.files.uploadedfile import UploadedFile
-
 import hmac
+
 from django.conf import settings
+from django.core.files.uploadedfile import UploadedFile
 from django.core.exceptions import SuspiciousOperation
 from django.utils.hashcompat import sha_constructor
 from django.utils import simplejson as json
+
+from formwizard.storage import BaseStorage, NoFileStorageConfigured
 
 sha_hmac = sha_constructor
 
@@ -52,9 +53,9 @@ class CookieStorage(BaseStorage):
 
     def set_step_files(self, step, files):
         if files and not self.file_storage:
-            raise NoFileStorageException
+            raise NoFileStorageConfigured
 
-        if not self.cookie_data[self.step_files_cookie_key].has_key(step):
+        if step not in self.cookie_data[self.step_files_cookie_key]:
             self.cookie_data[self.step_files_cookie_key][step] = {}
 
         for field, field_file in (files or {}).items():
@@ -77,7 +78,7 @@ class CookieStorage(BaseStorage):
         session_files = self.cookie_data[self.step_files_cookie_key].get(step, {})
 
         if session_files and not self.file_storage:
-            raise NoFileStorageException
+            raise NoFileStorageConfigured
 
         files = {}
         for field, field_dict in session_files.items():

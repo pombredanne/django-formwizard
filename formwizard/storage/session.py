@@ -1,5 +1,6 @@
-from formwizard.storage.base import BaseStorage, NoFileStorageException
 from django.core.files.uploadedfile import UploadedFile
+
+from formwizard.storage import BaseStorage, NoFileStorageConfigured
 
 class SessionStorage(BaseStorage):
     step_session_key = 'step'
@@ -11,7 +12,7 @@ class SessionStorage(BaseStorage):
         super(SessionStorage, self).__init__(prefix)
         self.request = request
         self.file_storage = file_storage
-        if not self.request.session.has_key(self.prefix):
+        if self.prefix not in self.request.session:
             self.init_storage()
 
     def init_storage(self):
@@ -45,9 +46,9 @@ class SessionStorage(BaseStorage):
 
     def set_step_files(self, step, files):
         if files and not self.file_storage:
-            raise NoFileStorageException
+            raise NoFileStorageConfigured
 
-        if not self.request.session[self.prefix][self.step_files_session_key].has_key(step):
+        if step not in self.request.session[self.prefix][self.step_files_session_key]:
             self.request.session[self.prefix][self.step_files_session_key][step] = {}
 
         for field, field_file in (files or {}).items():
@@ -71,7 +72,7 @@ class SessionStorage(BaseStorage):
         session_files = self.request.session[self.prefix][self.step_files_session_key].get(step, {})
 
         if session_files and not self.file_storage:
-            raise NoFileStorageException
+            raise NoFileStorageConfigured
 
         files = {}
         for field, field_dict in session_files.items():
