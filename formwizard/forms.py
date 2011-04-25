@@ -13,13 +13,17 @@ from django import forms
 from django.forms import formsets
 from django.views.generic import TemplateView
 
+def normalize_name(name):
+    new = re.sub('(((?<=[a-z])[A-Z])|([A-Z](?![A-Z]|$)))', '_\\1', name)
+    return new.lower().strip('_')
+
+
 class FormWizard(TemplateView):
     """
     The FormWizard is used to create multi-page forms and handles all the
     storage and validation stuff. The wizard is based on Django's generic
     class based views.
     """
-
     storage_name = None
     form_list = None
     initial_list = None
@@ -34,19 +38,15 @@ class FormWizard(TemplateView):
         instances for every request. We need to override this method because
         we add some kwargs which are needed to make the formwizard usable.
         """
-
-        return super(FormWizard, cls).as_view(
-            **cls.build_init_kwargs(*args, **kwargs))
+        initkwargs = cls.get_initkwargs(*args, **kwargs)
+        return super(FormWizard, cls).as_view(**initkwargs)
 
     @classmethod
-    def build_init_kwargs(cls, storage_name, form_list, initial_list={},
-        instance_list={}, condition_list={}):
+    def get_initkwargs(cls, form_list,
+            initial_list=None, instance_list=None, condition_list=None):
         """
-        Creates a dict with all needed parameters for the form wizardinstances.
+        Creates a dict with all needed parameters for the form wizard instances.
 
-        * `storage_name` - is the name of the storage backend, we should use.
-          This storage is the place where step data and current state of the
-          formwizard gets saved.
         * `form_list` - is a list of forms. The list entries can be single form
           classes or tuples of (`step_name`, `form_class`). If you pass a list
           of forms, the formwizard will convert the class list to
@@ -65,10 +65,12 @@ class FormWizard(TemplateView):
           will be called with the formwizard instance as the only argument.
           If the return value is true, the step's form will be used.
         """
-
-        kwargs = {}
+        kwargs = {
+            'initial_list': initial_list or {},
+            'instance_list': instance_list or {},
+            'condition_list': condition_list or {},
+        }
         init_form_list = SortedDict()
-        kwargs['storage_name'] = storage_name
 
         assert len(form_list) > 0, 'at least one form is needed'
 
@@ -99,15 +101,11 @@ class FormWizard(TemplateView):
 
         # build the kwargs for the formwizard instances
         kwargs['form_list'] = init_form_list
-        kwargs['initial_list'] = initial_list
-        kwargs['instance_list'] = instance_list
-        kwargs['condition_list'] = condition_list
-
         return kwargs
 
     def __repr__(self):
-        return '%s: form_list: %s, initial_list: %s' % (
-            self.get_wizard_name(), self.form_list, self.initial_list)
+        return '<%s: form_list: %s, initial_list: %s>' % (
+            self.__class__.__name__, self.form_list, self.initial_list)
 
     def dispatch(self, request, *args, **kwargs):
         """
@@ -119,14 +117,10 @@ class FormWizard(TemplateView):
         After processing the request using the `dispatch` method, the
         response gets updated by the storage engine (for example add cookies).
         """
-
         # add the storage engine to the current formwizard instance
-        self. storage = get_storage(
-            self.storage_name,
-            self.get_wizard_name(),
-            request,
-            getattr(self, 'file_storage', None)
-        )
+        self.storage = get_storage(
+            self.storage_name, normalize_name(self.__class__.__name__),
+            request, getattr(self, 'file_storage', None))
         response = super(FormWizard, self).dispatch(request, *args, **kwargs)
 
         # update the response (e.g. adding cookies)
@@ -164,7 +158,7 @@ class FormWizard(TemplateView):
                 form_list[form_key] = form_class
         return form_list
 
-    def get(self, *args, **kwargs):
+    def get(self, request, *args, **kwargs):
         """
         This method handles GET requests.
 
@@ -493,21 +487,13 @@ class FormWizard(TemplateView):
         """
         return len(self.get_form_list())
 
-    def get_wizard_name(self):
-        """
-        Returns the name of the wizard. By default the class name is used.
-        This name will be used in storage backends to prevent from colliding
-        with other form wizards.
-        """
-        return self.__class__.__name__
-
     def reset_wizard(self):
         """
         Resets the user-state of the wizard.
         """
         self.storage.reset()
 
-    def get_template_context(self, form):
+    def get_context_data(self, form, *args, **kwargs):
         """
         Returns the template context for a step. You can overwrite this method
         to add more data for all or some steps.
@@ -516,13 +502,14 @@ class FormWizard(TemplateView):
         .. code-block:: python
 
             class MyWizard(FormWizard):
-                def get_template_context(self, form):
-                    context = super(MyWizard, self).get_template_context(form)
+                def get_context_data(self, form, **kwargs):
+                    context = super(MyWizard, self).get_context_data(form, **kwargs)
                     if self.storage.get_current_step() == 'my_step_name':
                         context.update({'another_var': True})
                     return context
         """
-        return {
+        context = super(FormWizard, self).get_context_data(*args, **kwargs)
+        context.update({
             'extra_context': self.get_extra_context(),
             'form_step': self.determine_step(),
             'form_first_step': self.get_first_step(),
@@ -533,7 +520,11 @@ class FormWizard(TemplateView):
             'form_step1': int(self.get_step_index()) + 1,
             'form_step_count': self.get_num_steps(),
             'form': form,
-        }
+        })
+        # if there is an extra_context item in the kwars, pass the data to the
+        # storage engine.
+        self.update_extra_context(kwargs.get('extra_context', {}))
+        return context
 
     def get_extra_context(self):
         """
@@ -591,19 +582,15 @@ class SessionFormWizard(FormWizard):
     """
     A FormWizard with pre-configured SessionStorageBackend.
     """
-    @classonlymethod
-    def as_view(cls, *args, **kwargs):
-        return super(SessionFormWizard, cls).as_view(
-            'formwizard.storage.session.SessionStorage', *args, **kwargs)
+    storage_name = 'formwizard.storage.session.SessionStorage'
+
 
 class CookieFormWizard(FormWizard):
     """
     A FormWizard with pre-configured CookieStorageBackend.
     """
-    @classonlymethod
-    def as_view(cls, *args, **kwargs):
-        return super(CookieFormWizard, cls).as_view(
-            'formwizard.storage.cookie.CookieStorage', *args, **kwargs)
+    storage_name = 'formwizard.storage.cookie.CookieStorage'
+
 
 class NamedUrlFormWizard(FormWizard):
     """
@@ -614,7 +601,7 @@ class NamedUrlFormWizard(FormWizard):
     done_step_name = None
 
     @classmethod
-    def build_init_kwargs(cls, *args, **kwargs):
+    def get_initkwargs(cls, *args, **kwargs):
         """
         We require a url_name to reverse urls later. Additionally users can
         pass a done_step_name to change the url-name of the "done" view.
@@ -632,9 +619,7 @@ class NamedUrlFormWizard(FormWizard):
             extra_kwargs['done_step_name'] = kwargs['done_step_name']
             del kwargs['done_step_name']
 
-        initkwargs = super(NamedUrlFormWizard, cls).build_init_kwargs(
-            *args, **kwargs)
-
+        initkwargs = super(NamedUrlFormWizard, cls).get_initkwargs(*args, **kwargs)
         initkwargs.update(extra_kwargs)
 
         assert not initkwargs['form_list'].has_key(initkwargs['done_step_name']), \
@@ -745,21 +730,16 @@ class NamedUrlFormWizard(FormWizard):
 
         return super(NamedUrlFormWizard, self).render_done(form, **kwargs)
 
+
 class NamedUrlSessionFormWizard(NamedUrlFormWizard):
     """
     A NamedUrlFormWizard with pre-configured SessionStorageBackend.
     """
-    @classonlymethod
-    def as_view(cls, *args, **kwargs):
-        return super(NamedUrlFormWizard, cls).as_view(
-            'formwizard.storage.session.SessionStorage', *args, **kwargs)
+    storage_name = 'formwizard.storage.session.SessionStorage'
+
 
 class NamedUrlCookieFormWizard(NamedUrlFormWizard):
     """
     A NamedUrlFormWizard with pre-configured CookieStorageBackend.
     """
-    @classonlymethod
-    def as_view(cls, *args, **kwargs):
-        return super(NamedUrlFormWizard, cls).as_view(
-            'formwizard.storage.cookie.CookieStorage', *args, **kwargs)
-
+    storage_name = 'formwizard.storage.cookie.CookieStorage'
