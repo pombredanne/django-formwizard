@@ -120,14 +120,7 @@ class FormWizard(TemplateView):
 
         # update the response (e.g. adding cookies)
         self.storage.update_response(response)
-
-        # we need the instance in some tests, theirfor we have a testmode which
-        # returns a tuple of response and formwizard instance instead of only
-        # the HttpResponse
-        if kwargs.get('testmode', False):
-            return response, self
-        else:
-            return response
+        return response
 
     def get_form_list(self):
         """

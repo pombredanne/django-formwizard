@@ -300,11 +300,23 @@ class NamedFormTests(object):
         instance.render_done(None)
         self.assertEqual(instance.storage.get_current_step(), 'start')
 
+class TestNamedUrlSessionFormWizard(NamedUrlSessionFormWizard):
+
+    def dispatch(self, request, *args, **kwargs):
+        response = super(TestNamedUrlSessionFormWizard, self).dispatch(request, *args, **kwargs)
+        return response, self
+
+class TestNamedUrlCookieFormWizard(NamedUrlCookieFormWizard):
+
+    def dispatch(self, request, *args, **kwargs):
+        response = super(TestNamedUrlCookieFormWizard, self).dispatch(request, *args, **kwargs)
+        return response, self
+
+
 class NamedSessionFormTests(NamedFormTests, TestCase):
-    formwizard_class = NamedUrlSessionFormWizard
+    formwizard_class = TestNamedUrlSessionFormWizard
     wizard_urlname = 'nwiz_session'
 
 class NamedCookieFormTests(NamedFormTests, TestCase):
-    formwizard_class = NamedUrlCookieFormWizard
+    formwizard_class = TestNamedUrlCookieFormWizard
     wizard_urlname = 'nwiz_cookie'
-

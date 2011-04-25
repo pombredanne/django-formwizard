@@ -37,7 +37,11 @@ class UserForm(forms.ModelForm):
 UserFormSet = forms.models.modelformset_factory(User, form=UserForm, extra=2)
 
 class TestWizard(FormWizard):
-    pass
+    storage_name = 'formwizard.storage.session.SessionStorage'
+
+    def dispatch(self, request, *args, **kwargs):
+        response = super(TestWizard, self).dispatch(request, *args, **kwargs)
+        return response, self
 
 class FormTests(TestCase):
     def test_form_init(self):
