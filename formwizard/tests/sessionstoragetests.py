@@ -1,5 +1,6 @@
+from django.test import TestCase
+
 from formwizard.tests.storagetests import *
-from django.test import TestCase, Client
 from formwizard.storage.session import SessionStorage
 
 class TestSessionStorage(TestStorage, TestCase):

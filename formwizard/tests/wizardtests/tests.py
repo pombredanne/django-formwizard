@@ -1,4 +1,4 @@
-from django.test import TestCase, Client
+from django.test import TestCase
 from django.contrib.auth.models import User
 
 class WizardTests(object):
@@ -26,7 +26,6 @@ class WizardTests(object):
     )
 
     def setUp(self):
-        self.client = Client()
         self.testuser, created = User.objects.get_or_create(username='testuser1')
         self.wizard_step_data[0]['form1-user'] = self.testuser.pk
 
@@ -163,7 +162,7 @@ class WizardTests(object):
         response = self.client.post(self.wizard_url, self.wizard_step_data[2])
         self.assertEqual(response.status_code, 200)
         self.client.cookies.pop('sessionid', None)
-        self.client.cookies.pop('formwizard_ContactWizard', None)
+        self.client.cookies.pop('formwizard_cookie_contact_wizard', None)
         response = self.client.post(self.wizard_url, self.wizard_step_data[3])
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context.get('form_step', None), 'form1')

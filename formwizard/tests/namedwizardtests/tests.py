@@ -1,6 +1,7 @@
-from django.test import TestCase, Client
 from django.core.urlresolvers import reverse
 from django.http import QueryDict
+from django.test import TestCase
+
 from django.contrib.auth.models import User
 
 from formwizard.forms import (NamedUrlSessionFormWizard,
@@ -32,7 +33,6 @@ class NamedWizardTests(object):
     )
 
     def setUp(self):
-        self.client = Client()
         self.testuser, created = User.objects.get_or_create(username='testuser1')
         self.wizard_step_data[0]['form1-user'] = self.testuser.pk
 
@@ -235,7 +235,7 @@ class NamedWizardTests(object):
         self.assertEqual(response.status_code, 200)
 
         self.client.cookies.pop('sessionid', None)
-        self.client.cookies.pop('formwizard_ContactWizard', None)
+        self.client.cookies.pop('formwizard_cookie_contact_wizard', None)
 
         response = self.client.post(
             reverse(self.wizard_urlname,
@@ -278,15 +278,13 @@ class NamedFormTests(object):
 
         response, instance = testform(request,
                                       step='form1',
-                                      extra_context={'key1': 'value1'},
-                                      testmode=True)
+                                      extra_context={'key1': 'value1'})
         self.assertEqual(instance.get_extra_context(), {'key1': 'value1'})
 
         instance.reset_wizard()
 
         response, instance = testform(request,
-                                      extra_context={'key2': 'value2'},
-                                      testmode=True)
+                                      extra_context={'key2': 'value2'})
         self.assertEqual(instance.get_extra_context(), {'key2': 'value2'})
 
     def test_revalidation(self):
@@ -295,7 +293,7 @@ class NamedFormTests(object):
         testform = self.formwizard_class.as_view(
             [('start', Step1), ('step2', Step2)],
             url_name=self.wizard_urlname)
-        response, instance = testform(request, step='done', testmode=True)
+        response, instance = testform(request, step='done')
 
         instance.render_done(None)
         self.assertEqual(instance.storage.get_current_step(), 'start')
@@ -311,6 +309,7 @@ class TestNamedUrlCookieFormWizard(NamedUrlCookieFormWizard):
     def dispatch(self, request, *args, **kwargs):
         response = super(TestNamedUrlCookieFormWizard, self).dispatch(request, *args, **kwargs)
         return response, self
+
 
 
 class NamedSessionFormTests(NamedFormTests, TestCase):

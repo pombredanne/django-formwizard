@@ -1,9 +1,11 @@
 from django import forms
-from formwizard.forms import NamedUrlFormWizard
+from django.forms.formsets import formset_factory
 from django.http import HttpResponse
 from django.template import Template, Context
+
 from django.contrib.auth.models import User
-from django.forms.formsets import formset_factory
+
+from formwizard.forms import NamedUrlFormWizard
 
 class Page1(forms.Form):
     name = forms.CharField(max_length=100)
@@ -31,4 +33,10 @@ class ContactWizard(NamedUrlFormWizard):
 
         c['this_will_fail'] = self.get_cleaned_data_for_step('this_will_fail')
         return HttpResponse(Template('').render(c))
+
+class SessionContactWizard(ContactWizard):
+    storage_name = 'formwizard.storage.session.SessionStorage'
+
+class CookieContactWizard(ContactWizard):
+    storage_name = 'formwizard.storage.cookie.CookieStorage'
 
